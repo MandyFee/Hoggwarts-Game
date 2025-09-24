@@ -1,0 +1,34 @@
+{
+  "state": {
+    "running": true,
+    "tick": 1,
+    "level_index": 0,
+    "player_hp": 30,
+    "enemy_hp": 9,
+    "stamina": 13,
+    "score": 0,
+    "status": "attacking"
+  },
+  "player": {
+    "name": "Hogwarts Champion",
+    "hp": 30,
+    "attack": 6,
+    "defense": 3,
+    "inventory": [
+      "Chocolate Frog",
+      "Wand Polish",
+      "Pepperup Potion"
+    ]
+  },
+  "enemy": {
+    "kind": "Practice Boggart",
+    "hp": 9,
+    "attack": 3,
+    "defense": 1,
+    "inventory": []
+  },
+  "guards": {
+    "player_guard": false,
+    "enemy_guard": false
+  }
+}

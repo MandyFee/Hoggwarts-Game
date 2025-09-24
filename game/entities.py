@@ -11,7 +11,7 @@ class Player:
     hp: int
     attack: int = 6
     defense: int = 3
-    inventory: List[str] = field(default_factory=lambda: ["Chocolate Frog", "Wand Polish"])
+    inventory: List[str] = field(default_factory=lambda: ["Chocolate Frog", "Wand Polish", "Pepperup Potion"])
     max_hp: int = field(init=False)
 
     def __post_init__(self) -> None:

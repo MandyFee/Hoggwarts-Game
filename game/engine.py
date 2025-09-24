@@ -10,9 +10,28 @@ from .combat import compute_damage
 from .entities import Enemy, Player
 from .levels import Level
 
-PLAYER_ACTIONS = {"cast", "protego", "focus", "exit"}
+PLAYER_ACTIONS = {"cast", "protego", "focus", "exit", "item"}
 ENEMY_ACTIONS = {"curse", "shield", "stalk"}
 STARTING_STAMINA = 12
+
+ITEM_EFFECTS: Dict[str, Dict[str, Any]] = {
+    "chocolate frog": {
+        "message": "You unwrap a Chocolate Frog and take a restorative bite.",
+        "heal": 6,
+        "status": "nourished",
+    },
+    "wand polish": {
+        "message": "You buff your wand, letting the core hum with fresh power.",
+        "stamina": 4,
+        "status": "fortified",
+    },
+    "pepperup potion": {
+        "message": "A gulp of Pepperup Potion sends sparks of energy through you.",
+        "heal": 4,
+        "stamina": 4,
+        "status": "energised",
+    },
+}
 
 
 @dataclass
@@ -158,7 +177,7 @@ class GameEngine:
         self._player_guard = bool(guards.get("player_guard", False))
         self._enemy_guard = bool(guards.get("enemy_guard", False))
 
-    def update(self, player_action: str, enemy_action: str) -> List[str]:
+    def update(self, player_action: str, enemy_action: str, item_name: Optional[str] = None) -> List[str]:
         """Resolve a full round and return narration lines."""
         messages: List[str] = []
         if not self.state.running:
@@ -219,6 +238,9 @@ class GameEngine:
             self.state.stamina = min(self._max_stamina, self.state.stamina + 3)
             messages.append("You take a steadying breath, letting your magic coalesce.")
 
+        elif action == "item":
+            messages.extend(self._use_inventory_item(item_name))
+
         enemy_defeated = False
         if self.state.enemy_hp <= 0:
             enemy_defeated = True
@@ -274,6 +296,57 @@ class GameEngine:
 
         if self.state.running:
             self.state.tick += 1
+        return messages
+
+    def _use_inventory_item(self, item_name: Optional[str]) -> List[str]:
+        messages: List[str] = []
+        if not item_name:
+            messages.append("You fumble with your satchel and lose the moment.")
+            return messages
+
+        key = item_name.strip().lower()
+        actual_name: Optional[str] = None
+        removed_index = -1
+        for idx, entry in enumerate(self.player.inventory):
+            if entry.strip().lower() == key:
+                actual_name = self.player.inventory.pop(idx)
+                removed_index = idx
+                break
+
+        if actual_name is None:
+            messages.append(f"You rummage for {item_name}, but your satchel comes up empty.")
+            return messages
+
+        effect = ITEM_EFFECTS.get(key)
+        if effect is None:
+            insert_at = removed_index if removed_index >= 0 else len(self.player.inventory)
+            self.player.inventory.insert(insert_at, actual_name)
+            messages.append(f"You brandish {actual_name}, but it refuses to react mid-duel.")
+            return messages
+
+        messages.append(effect.get("message", f"You use {actual_name}."))
+
+        heal_amount = int(effect.get("heal", 0) or 0)
+        if heal_amount:
+            healed = min(heal_amount, self.player.max_hp - self.state.player_hp)
+            if healed:
+                self.state.player_hp += healed
+                self.player.hp = self.state.player_hp
+                messages.append(f"You recover {healed} HP as warmth rushes through you.")
+            else:
+                messages.append("You're already in perfect shape.")
+
+        stamina_amount = int(effect.get("stamina", 0) or 0)
+        if stamina_amount:
+            gained = min(stamina_amount, self._max_stamina - self.state.stamina)
+            if gained:
+                self.state.stamina += gained
+                messages.append(f"Your focus steadies, restoring {gained} stamina.")
+            else:
+                messages.append("Your focus is already razor sharp.")
+
+        self.state.status = effect.get("status", self.state.status)
+        self._player_guard = False
         return messages
 
     def _load_level(self, index: int) -> None:

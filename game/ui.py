@@ -1,7 +1,7 @@
 """Console UI helpers for Hogwarts duels."""
 from __future__ import annotations
 
-from typing import Dict
+from typing import Dict, Optional, Sequence
 
 try:
     from colorama import Fore, Style, init as colorama_init
@@ -28,14 +28,18 @@ ALERT_COLOR = Fore.RED + Style.BRIGHT
 EMPTY_COLOR = Fore.BLACK + Style.DIM
 RESET = Style.RESET_ALL
 
-VALID_ACTIONS = ("cast", "protego", "focus", "exit")
+VALID_ACTIONS = ("cast", "protego", "focus", "bag", "save", "load", "exit")
 ACTION_DESCRIPTIONS: Dict[str, str] = {
     "cast": "Launch an attacking charm.",
     "protego": "Raise a protective shield.",
     "focus": "Steady yourself to stay sharp.",
+    "bag": "Check your enchanted inventory.",
+    "save": "Store your duel progress to a file.",
+    "load": "Resume from a previous save file.",
     "exit": "Lower your wand and concede.",
 }
 HELP_ACTIONS = {"h", "help", "?"}
+CANCEL_WORDS = {"", "cancel", "c"}
 
 def render_header(level_name: str, tick: int) -> None:
     """Render a duel header showing the current venue and round."""
@@ -85,7 +89,7 @@ def render_status(
 def prompt_player_action() -> str:
     """Prompt the player until a supported action is entered."""
     print()
-    print(f"{LABEL_COLOR}Available spells:{RESET}")
+    print(f"{LABEL_COLOR}Available actions:{RESET}")
     for action in VALID_ACTIONS:
         description = ACTION_DESCRIPTIONS.get(action, "")
         print(f"  {Fore.WHITE + Style.BRIGHT}{action:<8}{RESET} - {INFO_COLOR}{description}{RESET}")
@@ -118,10 +122,59 @@ def render_help_screen() -> None:
     print(f"{INFO_COLOR}cast{RESET}    - Sling an offensive charm at your opponent.")
     print(f"{INFO_COLOR}protego{RESET} - Raise a shield to blunt the next attack.")
     print(f"{INFO_COLOR}focus{RESET}   - Regain stamina and sharpen your aim.")
+    print(f"{INFO_COLOR}bag{RESET}     - Inspect or use an item from your inventory.")
+    print(f"{INFO_COLOR}save{RESET}    - Save the duel so you can return later.")
+    print(f"{INFO_COLOR}load{RESET}    - Load a previously saved duel state.")
     print(f"{INFO_COLOR}exit{RESET}    - Bow out of the duel gracefully.")
     print(f"{INFO_COLOR}h{RESET}       - Show this help screen.")
     print(BORDER_COLOR + "=" * 40 + RESET)
     print()
+
+def prompt_save_path(default_path: str) -> Optional[str]:
+    """Ask the player where to save the current duel."""
+    print()
+    print(f"{LABEL_COLOR}Saving your duel:{RESET}")
+    print(f"Press Enter to use the default path [{default_path}] or type 'cancel' to abort.")
+    response = input(f"{LABEL_COLOR}Save file >>> {RESET}").strip()
+    lowered = response.lower()
+    if lowered in CANCEL_WORDS:
+        print(f"{INFO_COLOR}Save cancelled.{RESET}")
+        return None
+    return response or default_path
+
+def prompt_load_path(default_path: str) -> Optional[str]:
+    """Ask the player which save file should be loaded."""
+    print()
+    print(f"{LABEL_COLOR}Loading a duel:{RESET}")
+    print(f"Press Enter to use [{default_path}] or type 'cancel' to abort.")
+    response = input(f"{LABEL_COLOR}Load file >>> {RESET}").strip()
+    lowered = response.lower()
+    if lowered in CANCEL_WORDS:
+        print(f"{INFO_COLOR}Load cancelled.{RESET}")
+        return None
+    return response or default_path
+
+def prompt_inventory_choice(inventory: Sequence[str]) -> Optional[str]:
+    """Render the player's inventory and allow choosing an item to use."""
+    print()
+    print(f"{LABEL_COLOR}Enchanted satchel:{RESET}")
+    if not inventory:
+        print(f"{INFO_COLOR}Your satchel is empty. You'll need to source more supplies!{RESET}")
+        return None
+
+    for idx, item in enumerate(inventory, start=1):
+        print(f"  {Fore.WHITE + Style.BRIGHT}{idx:>2}.{RESET} {INFO_COLOR}{item}{RESET}")
+    print(f"  {Fore.WHITE + Style.BRIGHT}0.{RESET} {INFO_COLOR}Put the satchel away{RESET}")
+
+    while True:
+        choice = input(f"{LABEL_COLOR}Choose an item (0 to cancel) >>> {RESET}").strip()
+        if not choice or choice == "0":
+            return None
+        if choice.isdigit():
+            index = int(choice) - 1
+            if 0 <= index < len(inventory):
+                return inventory[index]
+        print(f"{ALERT_COLOR}That item isn't available. Try a listed number.{RESET}")
 
 def _build_bar(current: int, maximum: int, color: str, width: int = 24) -> str:
     if maximum <= 0:
