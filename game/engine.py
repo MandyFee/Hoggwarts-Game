@@ -1,41 +1,52 @@
-"""Game engine and state management."""
-from dataclasses import dataclass
+"""Game engine and state management for Hogwarts-themed duels."""
+from __future__ import annotations
+
+import json
+from dataclasses import asdict, dataclass
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
+from .combat import compute_damage
 from .entities import Enemy, Player
+from .levels import Level
 
-PLAYER_ACTIONS = {"attack", "defend", "wait", "quit"}
-ENEMY_ACTIONS = {"attack", "defend", "wait"}
+PLAYER_ACTIONS = {"cast", "protego", "focus", "exit"}
+ENEMY_ACTIONS = {"curse", "shield", "stalk"}
+STARTING_STAMINA = 12
 
 
 @dataclass
 class GameState:
-    """Light-weight container tracking the running game."""
+    """Light-weight container tracking the running duel."""
 
     running: bool = True
     tick: int = 0
     level_index: int = 0
     player_hp: int = 0
     enemy_hp: int = 0
+    stamina: int = STARTING_STAMINA
+    score: int = 0
+    status: str = "ok"
 
 
 class GameEngine:
-    """Coordinate the flow of the turn-based combat."""
+    """Coordinate the flow of each duel round."""
 
-    def __init__(self, player: Player, levels: Sequence[Dict[str, Any]]) -> None:
+    def __init__(self, player: Player, levels: Sequence[Dict[str, Any] | Level]) -> None:
         if not levels:
-            raise ValueError("At least one level is required to start the game.")
+            raise ValueError("At least one level is required to start the duel.")
 
         self.player = player
-        self.levels: List[Dict[str, Any]] = list(levels)
-        self.state = GameState(player_hp=player.hp)
+        self.levels: List[Level] = [lvl if isinstance(lvl, Level) else Level.from_dict(lvl) for lvl in levels]
+        self._max_stamina = max(STARTING_STAMINA, player.attack * 2 + player.defense)
+        self.state = GameState(player_hp=player.hp, stamina=self._max_stamina)
         self.enemy: Optional[Enemy] = None
         self._player_guard = False
         self._enemy_guard = False
         self._load_level(0)
 
     @property
-    def current_level(self) -> Dict[str, Any]:
+    def current_level(self) -> Level:
         return self.levels[self.state.level_index]
 
     def is_running(self) -> bool:
@@ -43,124 +54,246 @@ class GameEngine:
 
     def stop(self) -> None:
         self.state.running = False
+        self.state.status = "finished"
 
     def reset(self) -> None:
-        """Reset the game back to the first level."""
-        self.state = GameState(player_hp=self.player.max_hp)
+        """Reset the duel back to the opening round."""
         self.player.hp = self.player.max_hp
+        self.state = GameState(
+            running=True,
+            tick=0,
+            level_index=0,
+            player_hp=self.player.hp,
+            enemy_hp=0,
+            stamina=self._max_stamina,
+            score=0,
+            status="ok",
+        )
         self._player_guard = False
         self._enemy_guard = False
         self._load_level(0)
 
+    def save_state(self, path: str | Path) -> None:
+        """Persist the current duel state to JSON."""
+        data: Dict[str, Any] = {
+            "state": asdict(self.state),
+            "player": {
+                "name": self.player.name,
+                "hp": self.state.player_hp,
+                "attack": self.player.attack,
+                "defense": self.player.defense,
+                "inventory": list(self.player.inventory),
+            },
+            "enemy": None,
+            "guards": {
+                "player_guard": self._player_guard,
+                "enemy_guard": self._enemy_guard,
+            },
+        }
+        if self.enemy is not None:
+            data["enemy"] = {
+                "kind": self.enemy.kind,
+                "hp": self.state.enemy_hp,
+                "attack": self.enemy.attack,
+                "defense": self.enemy.defense,
+                "inventory": list(self.enemy.inventory),
+            }
+
+        Path(path).write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+    def load_state(self, path: str | Path) -> None:
+        """Restore a previously saved duel state."""
+        payload = Path(path).read_text(encoding="utf-8")
+        data = json.loads(payload)
+
+        state_block = data.get("state")
+        if not isinstance(state_block, dict):
+            raise ValueError("Saved game is missing state information.")
+
+        player_block = data.get("player", {})
+        self.player.name = str(player_block.get("name", self.player.name))
+        self.player.attack = int(player_block.get("attack", self.player.attack))
+        self.player.defense = int(player_block.get("defense", self.player.defense))
+        self.player.inventory = list(player_block.get("inventory", self.player.inventory))
+        player_hp = int(player_block.get("hp", self.player.hp))
+        self.player.hp = player_hp
+
+        level_index = int(state_block.get("level_index", 0))
+        if not 0 <= level_index < len(self.levels):
+            raise ValueError("Saved game references an unknown level index.")
+
+        tick = int(state_block.get("tick", 0))
+        stamina = int(state_block.get("stamina", self._max_stamina))
+        score = int(state_block.get("score", 0))
+        status = str(state_block.get("status", "ok"))
+        running = bool(state_block.get("running", True))
+
+        self._load_level(level_index)
+
+        enemy_block = data.get("enemy")
+        if enemy_block:
+            self.enemy = Enemy(
+                kind=enemy_block.get("kind", self.enemy.kind if self.enemy else "Unknown Opponent"),
+                hp=int(enemy_block.get("hp", self.enemy.hp if self.enemy else 10)),
+                attack=int(enemy_block.get("attack", self.enemy.attack if self.enemy else 3)),
+                defense=int(enemy_block.get("defense", self.enemy.defense if self.enemy else 1)),
+                inventory=list(enemy_block.get("inventory", [])),
+            )
+            enemy_hp = self.enemy.hp
+        else:
+            enemy_hp = self.enemy.hp if self.enemy else 0
+
+        self.state = GameState(
+            running=running,
+            tick=tick,
+            level_index=level_index,
+            player_hp=player_hp,
+            enemy_hp=enemy_hp,
+            stamina=max(0, min(stamina, self._max_stamina)),
+            score=score,
+            status=status,
+        )
+
+        guards = data.get("guards", {})
+        self._player_guard = bool(guards.get("player_guard", False))
+        self._enemy_guard = bool(guards.get("enemy_guard", False))
+
     def update(self, player_action: str, enemy_action: str) -> List[str]:
-        """Resolve a full player/enemy turn and return log lines."""
+        """Resolve a full round and return narration lines."""
         messages: List[str] = []
         if not self.state.running:
             return messages
 
         action = player_action.strip().lower()
         if action not in PLAYER_ACTIONS:
-            action = "wait"
+            action = "focus"
 
-        if action == "quit":
-            messages.append("You decide to retreat from the duel. Game over.")
+        if action == "exit":
+            messages.append("You lower your wand and bow out of the duel.")
             self.stop()
             return messages
 
         if self.enemy is None:
-            raise RuntimeError("GameEngine.update called before an enemy was loaded.")
+            raise RuntimeError("GameEngine.update called before an opponent was loaded.")
+
+        self.state.status = "ok"
 
         # Player phase
-        if action == "attack":
-            damage = self.player.attack
+        if action == "cast":
+            self.state.status = "attacking"
+            raw_damage = compute_damage(self.player, self.enemy, action)
+            if self.state.stamina <= 2:
+                raw_damage = max(0, raw_damage - 1)
+            damage = raw_damage
             if self._enemy_guard:
-                damage = max(0, damage - self.enemy.defense)
+                block = 1 + self.enemy.defense
+                damage = max(0, damage - block)
                 self._enemy_guard = False
                 if damage:
                     messages.append(
-                        f"You attack and punch through the guard for {damage} damage."
+                        f"You cast a spell that slips past the shield for {damage} damage."
                     )
                 else:
-                    messages.append(f"The {self.enemy.kind} blocks your attack!")
+                    messages.append(
+                        f"The {self.enemy.kind} repels your spell with a shimmering Protego!"
+                    )
             else:
-                messages.append(f"You attack and deal {damage} damage.")
+                if damage:
+                    messages.append(f"Your spell strikes true for {damage} damage.")
+                else:
+                    messages.append(f"Your spell fizzles before it reaches the {self.enemy.kind}.")
 
             if damage:
                 self.state.enemy_hp = max(0, self.state.enemy_hp - damage)
                 self.enemy.hp = self.state.enemy_hp
+            self.state.stamina = max(0, self.state.stamina - 2)
 
-        elif action == "defend":
+        elif action == "protego":
+            self.state.status = "guarded"
             self._player_guard = True
-            messages.append("You raise your guard, ready to deflect the next strike.")
+            self.state.stamina = max(0, self.state.stamina - 1)
+            messages.append("You conjure Protego, conjuring a gleaming shield in front of you.")
 
-        elif action == "wait":
-            messages.append("You bide your time, watching the enemy closely.")
+        elif action == "focus":
+            self.state.status = "focused"
+            self.state.stamina = min(self._max_stamina, self.state.stamina + 3)
+            messages.append("You take a steadying breath, letting your magic coalesce.")
 
         enemy_defeated = False
         if self.state.enemy_hp <= 0:
             enemy_defeated = True
-            messages.append(f"The {self.enemy.kind} is defeated!")
-            self._advance_level(messages)
+            messages.append(f"The {self.enemy.kind} is disarmed and crumples to the floor!")
+            self._handle_victory(messages)
 
-        # Enemy phase (skipped if the previous foe was just beaten)
+        # Opponent phase (skipped if the previous foe was just defeated)
         if not enemy_defeated and self.state.running:
             foe_action = enemy_action.strip().lower()
             if foe_action not in ENEMY_ACTIONS:
-                foe_action = "wait"
+                foe_action = "stalk"
 
-            if foe_action == "attack":
-                damage = self.enemy.attack
+            if foe_action == "curse":
+                raw_damage = compute_damage(self.enemy, self.player, foe_action)
                 if self._player_guard:
-                    damage = max(0, damage - self.player.defense)
+                    block = 1 + self.player.defense
+                    damage = max(0, raw_damage - block)
                     self._player_guard = False
                     if damage:
                         messages.append(
-                            f"The {self.enemy.kind} attacks and slips past your guard for {damage} damage."
+                            f"The {self.enemy.kind} unleashes a curse that cracks your shield for {damage} damage."
                         )
                     else:
                         messages.append(
-                            f"You deflect the {self.enemy.kind}'s strike without taking damage."
+                            f"Protego flares brilliantly, nullifying the {self.enemy.kind}'s curse!"
                         )
                 else:
-                    messages.append(
-                        f"The {self.enemy.kind} attacks and deals {damage} damage."
-                    )
+                    damage = raw_damage
+                    if damage:
+                        messages.append(
+                            f"The {self.enemy.kind} hurls a stinging hex for {damage} damage."
+                        )
+                    else:
+                        messages.append(
+                            f"You twist aside and the {self.enemy.kind}'s hex scatters harmlessly."
+                        )
 
                 if damage:
                     self.state.player_hp = max(0, self.state.player_hp - damage)
                     self.player.hp = self.state.player_hp
+                    self.state.status = "stunned"
 
-            elif foe_action == "defend":
+            elif foe_action == "shield":
                 self._enemy_guard = True
-                messages.append(f"The {self.enemy.kind} raises its guard.")
+                messages.append(f"The {self.enemy.kind} throws up a Protego shield.")
 
-            elif foe_action == "wait":
-                messages.append(f"The {self.enemy.kind} circles, waiting for an opening.")
+            elif foe_action == "stalk":
+                messages.append(f"The {self.enemy.kind} circles warily, wand poised.")
 
         if self.state.player_hp <= 0 and self.state.running:
-            messages.append("You collapse from your wounds. The duel is lost.")
+            messages.append("Your knees buckle as the duel slips away. Darkness closes in.")
             self.stop()
 
-        self.state.tick += 1
+        if self.state.running:
+            self.state.tick += 1
         return messages
 
     def _load_level(self, index: int) -> None:
         self.state.level_index = index
         level = self.levels[index]
-        enemy_data = level.get("enemy", {})
-        self.enemy = Enemy(
-            kind=enemy_data.get("kind", "Unknown Foe"),
-            hp=enemy_data.get("hp", 10),
-            attack=enemy_data.get("attack", 3),
-            defense=enemy_data.get("defense", 1),
-        )
+        self.enemy = level.build_enemy()
         self.state.enemy_hp = self.enemy.hp
-        self.enemy.hp = self.state.enemy_hp
+
+    def _handle_victory(self, messages: List[str]) -> None:
+        level = self.current_level
+        if level.reward:
+            self.state.score += level.reward
+            messages.append(f"You earn {level.reward} House Points for the victory!")
+        self.state.status = "victorious"
+        self._advance_level(messages)
 
     def _advance_level(self, messages: List[str]) -> None:
         next_index = self.state.level_index + 1
         if next_index >= len(self.levels):
-            messages.append("All challenges cleared! You are victorious.")
+            messages.append("Students around you erupt in cheers—you've won the House Cup!")
             self.stop()
             return
 
@@ -168,7 +301,8 @@ class GameEngine:
         if heal > 0:
             self.state.player_hp += heal
             self.player.hp = self.state.player_hp
-            messages.append(f"You take a moment to recover {heal} HP before the next duel.")
+            messages.append(f"Madam Pomfrey rushes in and mends {heal} HP before the next round.")
 
-        messages.append("A new challenger steps forward!")
+        self.state.stamina = min(self._max_stamina, self.state.stamina + 4)
+        messages.append("Another challenger steps from the shadows, wand at the ready!")
         self._load_level(next_index)

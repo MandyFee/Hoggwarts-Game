@@ -1,0 +1,123 @@
+[
+  {
+    "name": "Great Hall Gauntlet",
+    "difficulty": "easy",
+    "reward": 25,
+    "enemy": {
+      "kind": "Practice Boggart",
+      "hp": 14,
+      "attack": 3,
+      "defense": 1
+    }
+  },
+  {
+    "name": "Greenhouse Rumble",
+    "difficulty": "easy",
+    "reward": 35,
+    "enemy": {
+      "kind": "Vine-Tangled Suit of Armor",
+      "hp": 18,
+      "attack": 4,
+      "defense": 2
+    }
+  },
+  {
+    "name": "Forbidden Forest Ambush",
+    "difficulty": "normal",
+    "reward": 45,
+    "enemy": {
+      "kind": "Centaur Duelist",
+      "hp": 22,
+      "attack": 5,
+      "defense": 3
+    }
+  },
+  {
+    "name": "Quidditch Pitch Skirmish",
+    "difficulty": "normal",
+    "reward": 55,
+    "enemy": {
+      "kind": "Bludger-Hurling Beater",
+      "hp": 26,
+      "attack": 5,
+      "defense": 3
+    }
+  },
+  {
+    "name": "Room of Requirement Trials",
+    "difficulty": "normal",
+    "reward": 70,
+    "enemy": {
+      "kind": "Animated Gargoyle",
+      "hp": 30,
+      "attack": 6,
+      "defense": 4
+    }
+  },
+  {
+    "name": "Astronomy Tower Duel",
+    "difficulty": "hard",
+    "reward": 85,
+    "enemy": {
+      "kind": "Masked Death Eater",
+      "hp": 34,
+      "attack": 7,
+      "defense": 4
+    }
+  },
+  {
+    "name": "Great Lake Showdown",
+    "difficulty": "hard",
+    "reward": 95,
+    "enemy": {
+      "kind": "Grindylow Commander",
+      "hp": 38,
+      "attack": 7,
+      "defense": 4
+    }
+  },
+  {
+    "name": "Spellcraft Championship",
+    "difficulty": "hard",
+    "reward": 110,
+    "enemy": {
+      "kind": "Triwizard Champion",
+      "hp": 42,
+      "attack": 8,
+      "defense": 5
+    }
+  },
+  {
+    "name": "Ministry Atrium Clash",
+    "difficulty": "hard",
+    "reward": 125,
+    "enemy": {
+      "kind": "Auror Captain",
+      "hp": 46,
+      "attack": 8,
+      "defense": 5
+    }
+  },
+  {
+    "name": "Great Hall Victory Lap",
+    "difficulty": "hard",
+    "reward": 150,
+    "enemy": {
+      "kind": "Professor McGonagall",
+      "hp": 50,
+      "attack": 9,
+      "defense": 6
+    }
+  },
+  {
+    "name": "Dueling Championship Finale",
+    "difficulty": "hard",
+    "reward": 200,
+    "enemy": {
+      "kind": "Dark Lord Rival",
+      "hp": 60,
+      "attack": 10,
+      "defense": 6
+    }
+  }
+]

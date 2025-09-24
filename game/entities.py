@@ -1,15 +1,17 @@
-"""Entity definitions for the Hogwarts training game."""
+"""Entity definitions for Hogwarts duelists."""
 from dataclasses import dataclass, field
+from typing import List
 
 
 @dataclass
 class Player:
-    """Basic player combat stats."""
+    """Student duelist statistics used during combat."""
 
     name: str
     hp: int
     attack: int = 6
     defense: int = 3
+    inventory: List[str] = field(default_factory=lambda: ["Chocolate Frog", "Wand Polish"])
     max_hp: int = field(init=False)
 
     def __post_init__(self) -> None:
@@ -18,12 +20,13 @@ class Player:
 
 @dataclass
 class Enemy:
-    """Basic enemy combat stats."""
+    """Opponent statistics for Hogwarts training bouts."""
 
     kind: str
     hp: int
     attack: int = 4
     defense: int = 2
+    inventory: List[str] = field(default_factory=list)
     max_hp: int = field(init=False)
 
     def __post_init__(self) -> None:
